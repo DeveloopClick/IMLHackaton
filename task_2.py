@@ -25,13 +25,18 @@ def load_and_preprocess_data(filename: str):
     relevant_data = pd.get_dummies(relevant_data, columns=['accommadation_type_name'])
 
     # convert date/time features to numerical
-    for feature in ['booking_datetime', 'checkin_date', 'checkout_date']:
+    for feature in ['checkin_date', 'checkout_date']:
         relevant_data[feature] = pd.to_datetime(relevant_data[feature])
-        relevant_data[feature+'_year'] = relevant_data[feature].dt.year
-        relevant_data[feature+'_month'] = relevant_data[feature].dt.month
-        relevant_data[feature+'_day'] = relevant_data[feature].dt.day
-        relevant_data[feature+'_weekday'] = relevant_data[feature].dt.weekday
-        relevant_data.drop(feature, axis=1, inplace=True)
+        relevant_data[feature + '_month'] = relevant_data[feature].dt.month
+        relevant_data[feature + '_day'] = relevant_data[feature].dt.day
+        relevant_data[feature + '_weekday'] = relevant_data[feature].dt.weekday
+
+    # calculate number of nights
+    relevant_data['num_nights'] = (relevant_data['checkout_date'] - relevant_data['checkin_date']).dt.days
+    relevant_data.drop(['checkin_date', 'checkout_date'], axis=1, inplace=True)
+
+    if 'booking_datetime' in relevant_data.columns:
+        relevant_data.drop('booking_datetime', axis=1, inplace=True)
 
     relevant_data = relevant_data.dropna(axis=0)
     y = data['original_selling_amount_usd']
@@ -40,10 +45,10 @@ def load_and_preprocess_data(filename: str):
 
 def train_model(X, y):
     xgb_reg = xgb.XGBRegressor()
-    parameters = {'n_estimators': [50, 100, 200],
-                  'learning_rate': [0.01, 0.05, 0.1],
-                  'max_depth': [3, 5, 7],
-                  'gamma': [0, 0.1, 0.2],
+    parameters = {'n_estimators': [50, 100],
+                  'learning_rate': [0.05, 0.1],
+                  'max_depth': [5, 7],
+                  'gamma': [0, 0.1],
                   'subsample': [0.75, 1],
                   'colsample_bytree': [0.75, 1]}
 
@@ -83,31 +88,55 @@ def convert_price_to_usd(data_in_all_currencys):
     data_in_all_currencys['original_selling_amount_usd'] = data_in_all_currencys.apply(
         lambda row: row['original_selling_amount'] * rates[row['original_payment_currency']], axis=1)
 
+def load_and_preprocess_test_data(filename: str):
+    data = pd.read_csv(filename)
+    relevant_data = data[[
+                          'booking_datetime', 'checkin_date', 'checkout_date', 'hotel_star_rating', 'charge_option', 'accommadation_type_name',
+                          'no_of_room'
+                          ]]
+    # one hot encode for country_code, acoommadation_type_name, charge_option
+    relevant_data = pd.get_dummies(relevant_data, columns=['charge_option'])
+    relevant_data = pd.get_dummies(relevant_data, columns=['accommadation_type_name'])
+
+    # convert date/time features to datetime
+    relevant_data['checkin_date'] = pd.to_datetime(relevant_data['checkin_date'])
+    relevant_data['checkout_date'] = pd.to_datetime(relevant_data['checkout_date'])
+
+    # calculate number of nights
+    relevant_data['num_nights'] = (relevant_data['checkout_date'] - relevant_data['checkin_date']).dt.days
+    relevant_data.drop(['checkin_date', 'checkout_date', 'booking_datetime'], axis=1, inplace=True)
+
+    relevant_data = relevant_data.dropna(axis=0)
+    return relevant_data
+
 def predict_and_save(model, filename):
     # Load and preprocess the test data similar to how we preprocessed the training data
-    data_test = load_and_preprocess_data(filename)
+    data_test = load_and_preprocess_test_data(filename)
 
     # Predict the selling amounts in USD
     predicted_selling_amount_usd = model.predict(data_test)
 
-    # Load the test data again to get the original_payment_currency for each record
-    data_test_original = pd.read_csv(filename)
-    original_currencies = data_test_original['original_payment_currency']
+    # Note: No conversion of currencies here as we don't know the original_payment_currency
 
-    # Convert the predicted selling amounts to the original currencies
-    rates = get_conversion_rates(data_test_original['original_payment_currency'].unique())
-    predicted_selling_amount = predicted_selling_amount_usd / data_test_original['original_payment_currency'].map(rates)
+    # Load the test data again to get the h_booking_id for each record
+    data_test_original = pd.read_csv(filename)
 
     # Create a DataFrame with h_booking_id and predicted_selling_amount
     output = pd.DataFrame({
         'h_booking_id': data_test_original['h_booking_id'],
-        'predicted_selling_amount': predicted_selling_amount
+        'predicted_selling_amount': predicted_selling_amount_usd
     })
+
+    # Note: If you have a method to determine whether an order is likely to be cancelled,
+    # you can implement it here. For instance, if order_is_likely_to_be_cancelled() returns
+    # True or False, you could use:
+    # output.loc[order_is_likely_to_be_cancelled(data_test_original), 'predicted_selling_amount'] = -1
 
     # Save the DataFrame to a CSV file
     output.to_csv('agoda_cost_of_cancellation.csv', index=False)
 
     return output
+
 
 
 
