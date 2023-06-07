@@ -138,9 +138,7 @@ def predict_and_save(model, filename):
     return output
 
 
-
-
-if __name__ == '__main__':
+def run_task_2():
     # Load and preprocess the training data
     print("Loading and preprocessing training data...")
     data, y = load_and_preprocess_data('agoda_cancellation_train.csv')

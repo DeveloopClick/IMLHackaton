@@ -84,7 +84,7 @@ def predict_test_data(model, X_test, output_filename):
     })
     output_df.to_csv(output_filename, index=False)
 
-def main():
+def run_task_1():
     # Load the training dataset
     df_train = pd.read_csv('agoda_cancellation_train.csv')
 
@@ -112,5 +112,3 @@ def main():
     # Predict on the test data and save the output
     predict_test_data(model, X_test, 'agoda_cancellation_prediction.csv')
 
-if __name__ == '__main__':
-    main()
