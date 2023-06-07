@@ -1,72 +1,75 @@
 import pandas as pd
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.preprocessing import OneHotEncoder
-from sklearn.impute import SimpleImputer
-from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer
-from tqdm import tqdm
+import xgboost as xgb
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error
+from numpy import sqrt
+import plotly.express as px
 
-
-def load_data(filename: str) -> pd.DataFrame:
+def load_and_preprocess_data(filename: str):
     data = pd.read_csv(filename)
-    return data
-
-
-def preprocess_data(data):
-    numeric_features = data.select_dtypes(include=['int64', 'float64']).columns
-    categorical_features = data.select_dtypes(include=['object']).columns
-
-    numeric_transformer = Pipeline(steps=[
-        ('imputer', SimpleImputer(strategy='mean'))])
-
-    categorical_transformer = Pipeline(steps=[
-        ('imputer', SimpleImputer(strategy='most_frequent')),
-        ('onehot', OneHotEncoder(handle_unknown='ignore'))])
-
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ('num', numeric_transformer, numeric_features),
-            ('cat', categorical_transformer, categorical_features)])
-
-    data = preprocessor.fit_transform(data)
-
-    return data, preprocessor
+    data = data.dropna(axis=0)  # drop all rows with any NaN values
+    relevant_data = data[['booking_datetime', 'checkin_date', 'checkout_date', 'hotel_country_code',
+                          'hotel_star_rating', 'charge_option', 'accommadation_type_name',
+                          'customer_nationality', 'guest_nationality_country_name',
+                          'guest_is_not_the_customer', 'no_of_room', 'origin_country_code',
+                          'original_payment_currency', 'is_first_booking', 'request_airport',
+                          'hotel_brand_code', 'hotel_chain_code', 'hotel_live_date', 'no_of_adults',
+                          'no_of_children', 'is_user_logged_in']]
+    y = data['original_selling_amount']
+    for col in relevant_data.columns:
+        # print pearson correlation coefficient
+        print(col)
+        print(relevant_data[col].corr(y))
+    relevant_data = pd.get_dummies(relevant_data)  # one-hot encode categorical variables
+    return relevant_data, y
 
 
 def train_model(X, y):
-    clf = RandomForestRegressor(n_estimators=100, random_state=42)
-    clf.fit(X, y)
-    return clf
+    xgb_reg = xgb.XGBRegressor(n_estimators=100, learning_rate=0.08, gamma=0, subsample=0.75,
+                               colsample_bytree=1, max_depth=7)
+    xgb_reg.fit(X, y)
+    return xgb_reg
 
 
-def predict_and_save_submission(clf, preprocessor, data, filename):
-    data_preprocessed = preprocessor.transform(data)
-    predictions = clf.predict(data_preprocessed)
+def calculate_rmse(y_true, y_pred):
+    mse = mean_squared_error(y_true, y_pred)
+    rmse = sqrt(mse)
+    return rmse
 
-    # Create a dataframe for submission
-    submission = pd.DataFrame({'h_booking_id': data['h_booking_id'],
-                               'predicted_selling_amount': predictions})
 
-    submission.to_csv(filename, index=False)
+# def predict_and_save_submission(model, data, filename):
+#     data_preprocessed = preprocess_data(data)
+#     predictions = model.predict(data_preprocessed)
+#
+#     submission = pd.DataFrame({'h_booking_id': data['h_booking_id'],
+#                                'predicted_selling_amount': predictions})
+#
+#     submission.to_csv(filename, index=False)
 
 if __name__ == '__main__':
-
     # Load and preprocess the training data
     print("Loading and preprocessing training data...")
-    train_data = load_data('agoda_cancellation_train.csv')
-    features = train_data.drop(['h_booking_id', 'cancellation_datetime', 'original_selling_amount'], axis=1)
-    y = train_data['original_selling_amount']
-    preprocessed_features, preprocessor = preprocess_data(features)
+    data, y = load_and_preprocess_data('agoda_cancellation_train.csv')
+
+    # Split the training data
+    print("Splitting training data into train and test sets...")
+    X_train, X_test, y_train, y_test = train_test_split(data, y, test_size=0., random_state=42)
 
     # Train the model
     print("Training model...")
-    clf = train_model(preprocessed_features, y)
+    model = train_model(X_train, y_train)
 
-    # Load and preprocess the test data
-    print("Loading and preprocessing test data...")
-    test_data = load_data('Agoda_Test_2.csv')
+    # Calculate RMSE on the test data
+    print("Calculating RMSE on the test set...")
+    y_test_pred = model.predict(X_test)
+    rmse_test = calculate_rmse(y_test, y_test_pred)
+    print(f'Test RMSE: {rmse_test}')
 
-    # Predict and save submission
-    print("Predicting and saving submission...")
-    predict_and_save_submission(clf, preprocessor, test_data, 'agoda_cost_of_cancellation.csv')
-    print("Done!")
+    # # Load and preprocess the submission data
+    # print("Loading and preprocessing submission data...")
+    # submission_data = load_data('Agoda_Test_2.csv')
+    #
+    # # Predict and save submission
+    # print("Predicting and saving submission...")
+    # predict_and_save_submission(model, submission_data, 'agoda_cost_of_cancellation.csv')
+    # print("Done!")
