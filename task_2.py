@@ -40,10 +40,10 @@ def load_and_preprocess_data(filename: str):
 
 def train_model(X, y):
     xgb_reg = xgb.XGBRegressor()
-    parameters = {'n_estimators': [50, 100],
-                  'learning_rate': [0.05, 0.1],
-                  'max_depth': [5, 7],
-                  'gamma': [0, 0.1],
+    parameters = {'n_estimators': [50, 100, 200],
+                  'learning_rate': [0.01, 0.05, 0.1],
+                  'max_depth': [3, 5, 7],
+                  'gamma': [0, 0.1, 0.2],
                   'subsample': [0.75, 1],
                   'colsample_bytree': [0.75, 1]}
 
@@ -83,6 +83,33 @@ def convert_price_to_usd(data_in_all_currencys):
     data_in_all_currencys['original_selling_amount_usd'] = data_in_all_currencys.apply(
         lambda row: row['original_selling_amount'] * rates[row['original_payment_currency']], axis=1)
 
+def predict_and_save(model, filename):
+    # Load and preprocess the test data similar to how we preprocessed the training data
+    data_test = load_and_preprocess_data(filename)
+
+    # Predict the selling amounts in USD
+    predicted_selling_amount_usd = model.predict(data_test)
+
+    # Load the test data again to get the original_payment_currency for each record
+    data_test_original = pd.read_csv(filename)
+    original_currencies = data_test_original['original_payment_currency']
+
+    # Convert the predicted selling amounts to the original currencies
+    rates = get_conversion_rates(data_test_original['original_payment_currency'].unique())
+    predicted_selling_amount = predicted_selling_amount_usd / data_test_original['original_payment_currency'].map(rates)
+
+    # Create a DataFrame with h_booking_id and predicted_selling_amount
+    output = pd.DataFrame({
+        'h_booking_id': data_test_original['h_booking_id'],
+        'predicted_selling_amount': predicted_selling_amount
+    })
+
+    # Save the DataFrame to a CSV file
+    output.to_csv('agoda_cost_of_cancellation.csv', index=False)
+
+    return output
+
+
 
 if __name__ == '__main__':
     # Load and preprocess the training data
@@ -103,3 +130,7 @@ if __name__ == '__main__':
 
     rmse_test = calculate_rmse(y_test, y_test_pred)
     print(f'Test RMSE: {rmse_test}')
+
+    # Predict and save the predicted selling amounts for the test data
+    print("Predicting and saving the selling amounts for the test data...")
+    predict_and_save(model, 'Agoda_Test_2.csv')
