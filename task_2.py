@@ -1,72 +1,105 @@
 import pandas as pd
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.preprocessing import OneHotEncoder
-from sklearn.impute import SimpleImputer
-from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer
-from tqdm import tqdm
+import xgboost as xgb
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.metrics import mean_squared_error
+from numpy import sqrt
+from forex_python.converter import CurrencyRates
+
+CONVERSION_RATES_TO_USD = {"CNY": 0.141145, "ZAR": 0.05125604, "KRW": 0.00076561928, "SGD": 0.74047095,
+                             "THB": 0.028749006, "ARS": 0.0041429069, "TWD": 0.032567006, "SAR": 0.26666667,
+                             "USD": 1.00, "MYR": 0.21845246, "SEK": 0.092128658, "NZD": 0.60573548,
+                           "VND": 0.000042595541, "OMR": 2.599953, "UAH": 0.027277709, "KZT": 0.00222717,
+                           "XPF": 0.0089806655, "KHR": 0.000243195, "LAK": 0.000055590889}
 
 
-def load_data(filename: str) -> pd.DataFrame:
+def load_and_preprocess_data(filename: str):
     data = pd.read_csv(filename)
-    return data
+    # change currency and price to match the usd price
+    convert_price_to_usd(data)
+    relevant_data = data[[
+                          'booking_datetime', 'checkin_date', 'checkout_date', 'hotel_star_rating', 'charge_option', 'accommadation_type_name',
+                          'no_of_room'
+                          ]]
+    # one hot encode for country_code, acoommadation_type_name, charge_option
+    relevant_data = pd.get_dummies(relevant_data, columns=['charge_option'])
+    relevant_data = pd.get_dummies(relevant_data, columns=['accommadation_type_name'])
 
+    # convert date/time features to numerical
+    for feature in ['booking_datetime', 'checkin_date', 'checkout_date']:
+        relevant_data[feature] = pd.to_datetime(relevant_data[feature])
+        relevant_data[feature+'_year'] = relevant_data[feature].dt.year
+        relevant_data[feature+'_month'] = relevant_data[feature].dt.month
+        relevant_data[feature+'_day'] = relevant_data[feature].dt.day
+        relevant_data[feature+'_weekday'] = relevant_data[feature].dt.weekday
+        relevant_data.drop(feature, axis=1, inplace=True)
 
-def preprocess_data(data):
-    numeric_features = data.select_dtypes(include=['int64', 'float64']).columns
-    categorical_features = data.select_dtypes(include=['object']).columns
-
-    numeric_transformer = Pipeline(steps=[
-        ('imputer', SimpleImputer(strategy='mean'))])
-
-    categorical_transformer = Pipeline(steps=[
-        ('imputer', SimpleImputer(strategy='most_frequent')),
-        ('onehot', OneHotEncoder(handle_unknown='ignore'))])
-
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ('num', numeric_transformer, numeric_features),
-            ('cat', categorical_transformer, categorical_features)])
-
-    data = preprocessor.fit_transform(data)
-
-    return data, preprocessor
+    relevant_data = relevant_data.dropna(axis=0)
+    y = data['original_selling_amount_usd']
+    return relevant_data, y
 
 
 def train_model(X, y):
-    clf = RandomForestRegressor(n_estimators=100, random_state=42)
-    clf.fit(X, y)
-    return clf
+    xgb_reg = xgb.XGBRegressor()
+    parameters = {'n_estimators': [50, 100],
+                  'learning_rate': [0.05, 0.1],
+                  'max_depth': [5, 7],
+                  'gamma': [0, 0.1],
+                  'subsample': [0.75, 1],
+                  'colsample_bytree': [0.75, 1]}
+
+    xgb_grid = GridSearchCV(xgb_reg,
+                            parameters,
+                            cv = 3,
+                            n_jobs = 5,
+                            verbose=True)
+
+    xgb_grid.fit(X, y)
+    print(xgb_grid.best_score_)
+    print(xgb_grid.best_params_)
+
+    return xgb_grid.best_estimator_
 
 
-def predict_and_save_submission(clf, preprocessor, data, filename):
-    data_preprocessed = preprocessor.transform(data)
-    predictions = clf.predict(data_preprocessed)
+def calculate_rmse(y_true, y_pred):
+    mse = mean_squared_error(y_true, y_pred)
+    rmse = sqrt(mse)
+    return rmse
 
-    # Create a dataframe for submission
-    submission = pd.DataFrame({'h_booking_id': data['h_booking_id'],
-                               'predicted_selling_amount': predictions})
 
-    submission.to_csv(filename, index=False)
+def get_conversion_rates(currencies):
+    cr = CurrencyRates()
+    rates = {}
+    for currency in currencies:
+        try:
+            rates[currency] = cr.get_rate(currency, 'USD')
+        except:
+            rates[currency] = CONVERSION_RATES_TO_USD.get(currency)
+    return rates
+
+
+def convert_price_to_usd(data_in_all_currencys):
+    # change currency to usd
+    rates = get_conversion_rates(data_in_all_currencys['original_payment_currency'].unique())
+    data_in_all_currencys['original_selling_amount_usd'] = data_in_all_currencys.apply(
+        lambda row: row['original_selling_amount'] * rates[row['original_payment_currency']], axis=1)
+
 
 if __name__ == '__main__':
-
     # Load and preprocess the training data
     print("Loading and preprocessing training data...")
-    train_data = load_data('agoda_cancellation_train.csv')
-    features = train_data.drop(['h_booking_id', 'cancellation_datetime', 'original_selling_amount'], axis=1)
-    y = train_data['original_selling_amount']
-    preprocessed_features, preprocessor = preprocess_data(features)
+    data, y = load_and_preprocess_data('agoda_cancellation_train.csv')
+
+    # Split the training data
+    print("Splitting training data into train and test sets...")
+    X_train, X_test, y_train, y_test = train_test_split(data, y, test_size=0.2, random_state=42)
 
     # Train the model
     print("Training model...")
-    clf = train_model(preprocessed_features, y)
+    model = train_model(X_train, y_train)
 
-    # Load and preprocess the test data
-    print("Loading and preprocessing test data...")
-    test_data = load_data('Agoda_Test_2.csv')
+    # Calculate RMSE on the test data
+    print("Calculating RMSE on the test set...")
+    y_test_pred = model.predict(X_test)
 
-    # Predict and save submission
-    print("Predicting and saving submission...")
-    predict_and_save_submission(clf, preprocessor, test_data, 'agoda_cost_of_cancellation.csv')
-    print("Done!")
+    rmse_test = calculate_rmse(y_test, y_test_pred)
+    print(f'Test RMSE: {rmse_test}')
