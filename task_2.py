@@ -1,3 +1,20 @@
+# load the agoda cancellation dataset
+import numpy as np
+import pandas as pd
+import sklearn
+
+
+def load_data(filename: str) -> pd.DataFrame:
+    df = pd.read_csv(filename)
+    df = df.dropna().drop_duplicates()
+    return df
+
+
+
+df = load_data("agoda_cancellation_train.csv")
+print("debug")
+
+
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
@@ -65,16 +82,17 @@ if __name__ == '__main__':
     preprocessed_features, preprocessor = preprocess_data(features)
 
     # Train/Test split
-    X_train, X_test, y_train, y_test = train_test_split(preprocessed_features, y, test_size=0.2, random_state=0)
+    X_train, X_test, y_train, y_test = train_test_split(preprocessed_features, y, test_size=0.9, random_state=0)
 
     # Train the model
     clf = train_model(X_train, y_train)
 
     # Predict on test data
-    y_pred = clf.predict(X_test)
+    X1, _, y1, _ = train_test_split(X_test, y, test_size=0.9, random_state=0)
+    y_pred = clf.predict(X1)
 
     # Calculate RMSE
-    rmse = calculate_rmse(y_test, y_pred)
+    rmse = calculate_rmse(y1, y_pred)
     print(f'RMSE: {rmse}')
 
     # Predict on whole dataset for submission
