@@ -17,12 +17,12 @@ def load_and_preprocess_data(filename: str):
     # change currency and price to match the usd price
     convert_price_to_usd(data)
     relevant_data = data[[
-                          'booking_datetime', 'checkin_date', 'checkout_date', 'hotel_star_rating', 'charge_option', 'accommadation_type_name',
+                          'booking_datetime', 'checkin_date', 'checkout_date', 'hotel_star_rating',
                           'no_of_room'
                           ]]
-    # one hot encode for country_code, acoommadation_type_name, charge_option
-    relevant_data = pd.get_dummies(relevant_data, columns=['charge_option'])
-    relevant_data = pd.get_dummies(relevant_data, columns=['accommadation_type_name'])
+    # # one hot encode for country_code, acoommadation_type_name, charge_option
+    # relevant_data = pd.get_dummies(relevant_data, columns=['charge_option'])
+    # relevant_data = pd.get_dummies(relevant_data, columns=['accommadation_type_name'])
 
     # convert date/time features to numerical
     for feature in ['checkin_date', 'checkout_date']:
@@ -92,13 +92,12 @@ def load_and_preprocess_test_data(filename: str):
     data = pd.read_csv(filename)
     # change currency and price to match the usd price
     relevant_data = data[[
-        'booking_datetime', 'checkin_date', 'checkout_date', 'hotel_star_rating', 'charge_option',
-        'accommadation_type_name',
+        'booking_datetime', 'checkin_date', 'checkout_date', 'hotel_star_rating',
         'no_of_room'
     ]]
-    # one hot encode for country_code, acoommadation_type_name, charge_option
-    relevant_data = pd.get_dummies(relevant_data, columns=['charge_option'])
-    relevant_data = pd.get_dummies(relevant_data, columns=['accommadation_type_name'])
+    # # one hot encode for country_code, acoommadation_type_name, charge_option
+    # relevant_data = pd.get_dummies(relevant_data, columns=['charge_option'])
+    # relevant_data = pd.get_dummies(relevant_data, columns=['accommadation_type_name'])
 
     # convert date/time features to numerical
     for feature in ['checkin_date', 'checkout_date']:
