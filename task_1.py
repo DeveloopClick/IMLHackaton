@@ -1,64 +1,116 @@
+import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score
-from sklearn.pipeline import Pipeline
-from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import OneHotEncoder
-from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import LabelEncoder
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
-# Load the training dataset
-df_train = pd.read_csv('agoda_cancellation_train.csv')
+def preprocess_data(df_train, df_test):
+    # Prepare the training data
+    X_train, y_train = prepare_data(df_train)
 
-# Drop rows with NaN values in 'cancellation_datetime'
-df_train = df_train.dropna(subset=['cancellation_datetime'])
+    # Prepare the test data
+    X_test = prepare_data(df_test, is_train=False)
 
-# Split the data into features (X) and target (y)
-X = df_train.drop(['cancellation_datetime'], axis=1)
-y = df_train['cancellation_datetime'].notnull().astype(int)
+    return X_train, y_train, X_test
 
-# Preprocess the data
-numeric_features = X.select_dtypes(include=['int64', 'float64']).columns
-categorical_features = X.select_dtypes(include=['object']).columns
 
-numeric_transformer = Pipeline(steps=[
-    ('imputer', SimpleImputer(strategy='mean'))])
+def prepare_data(df, is_train=True):
+    # Specify the relevant columns to keep
 
-categorical_transformer = Pipeline(steps=[
-    ('imputer', SimpleImputer(strategy='most_frequent')),
-    ('onehot', OneHotEncoder(handle_unknown='ignore'))])
+    relevant_cols = ['hotel_country_code',
+                     'hotel_star_rating', 'charge_option', 'accommadation_type_name',
+                     'customer_nationality', 'guest_nationality_country_name',
+                     'guest_is_not_the_customer', 'no_of_room', 'origin_country_code',
+                     'original_payment_currency', 'is_first_booking', 'request_airport',
+                     'hotel_brand_code',
+                     'no_of_children', 'is_user_logged_in']
+    if is_train:
+        relevant_cols.append('cancellation_datetime')
 
-preprocessor = ColumnTransformer(
-    transformers=[
-        ('num', numeric_transformer, numeric_features),
-        ('cat', categorical_transformer, categorical_features)])
+    df = df[relevant_cols].drop_duplicates()
+    # Prepare the data
+    # X = df.copy()
+    if is_train:
+        df["y"] = df['cancellation_datetime'].notnull().astype(int)
+        df = df.drop('cancellation_datetime', axis=1)
+        df = df.dropna()
+        y = df["y"]
+        X = df.drop(columns=["y"])
+    else:
+        X = df.dropna()
+        y=None
 
-X = preprocessor.fit_transform(X)
 
-# Split the data into training and validation sets
-X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.6, random_state=42)
 
-# Train a Random Forest Classifier
-model = RandomForestClassifier(random_state=42)
-model.fit(X_train, y_train)
 
-# Evaluate the model on the validation set
-y_val_pred = model.predict(X_val)
-accuracy = accuracy_score(y_val, y_val_pred)
-print("Validation Accuracy:", accuracy)
+    # Perform one-hot encoding on categorical columns
+    cat_cols = ['hotel_country_code', 'charge_option', 'accommadation_type_name',
+                'customer_nationality', 'guest_nationality_country_name',
+                'origin_country_code', 'original_payment_currency',
+                'hotel_brand_code']
 
-# Load the test dataset
-df_test = pd.read_csv('Agoda_Test_1.csv')
+    X = pd.get_dummies(X, columns=cat_cols, drop_first=True)
 
-# Preprocess the test data
-X_test = preprocessor.transform(df_test)
+    return X, y
 
-# Make predictions on the test data
-y_test_pred = model.predict(X_test)
+def train_model(X_train, y_train):
+    # Train a Logistic Regression model
+    model = LogisticRegression(random_state=42)
+    model.fit(X_train, y_train)
 
-# Create a DataFrame with the 'id' and 'cancellation' columns and save it
-output_df = pd.DataFrame({
-    'id': df_test['h_booking_id'],
-    'cancellation': y_test_pred
-})
-output_df.to_csv('agoda_cancellation_prediction.csv', index=False)
+    return model
+
+def evaluate_model(model, X_val, y_val):
+    # Evaluate the model on the validation set
+    y_val_pred = model.predict(X_val)
+    accuracy = accuracy_score(y_val, y_val_pred)
+    precision = precision_score(y_val, y_val_pred)
+    recall = recall_score(y_val, y_val_pred)
+    f1 = f1_score(y_val, y_val_pred)
+    print("Validation Accuracy:", accuracy)
+    print("Validation Precision:", precision)
+    print("Validation Recall:", recall)
+    print("Validation F1 Score:", f1)
+
+def predict_test_data(model, X_test, output_filename):
+    # Make predictions on the test data using the trained model
+    y_test_pred = model.predict(X_test)
+
+    # Create a DataFrame with the 'id' and 'cancellation' columns and save it
+    output_df = pd.DataFrame({
+        'id': X_test['h_booking_id'],
+        'cancellation': y_test_pred
+    })
+    output_df.to_csv(output_filename, index=False)
+
+def main():
+    # Load the training dataset
+    df_train = pd.read_csv('agoda_cancellation_train.csv')
+
+    # Use a smaller subset of the data
+    df_train = df_train.sample(n=4000, random_state=42)
+
+    # Load the test dataset
+    df_test = pd.read_csv('Agoda_Test_1.csv')
+
+    # Use a smaller subset of the test data
+    df_test = df_test.sample(n=1000, random_state=42)
+
+    # Preprocess the data
+    X_train, y_train, X_test = preprocess_data(df_train, df_test)
+
+    # Train the model
+    model = train_model(X_train, y_train)
+
+    # Split the data into training and validation sets
+    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=42)
+
+    # Evaluate the model
+    evaluate_model(model, X_val, y_val)
+
+    # Predict on the test data and save the output
+    predict_test_data(model, X_test, 'agoda_cancellation_prediction.csv')
+
+if __name__ == '__main__':
+    main()
