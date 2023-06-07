@@ -1,12 +1,10 @@
 import pandas as pd
-from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.impute import SimpleImputer
-from sklearn.metrics import mean_squared_error
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
-from math import sqrt
+from tqdm import tqdm
 
 
 def load_data(filename: str) -> pd.DataFrame:
@@ -35,47 +33,40 @@ def preprocess_data(data):
     return data, preprocessor
 
 
-def train_model(X_train, y_train):
+def train_model(X, y):
     clf = RandomForestRegressor(n_estimators=100, random_state=42)
-    clf.fit(X_train, y_train)
+    clf.fit(X, y)
     return clf
-
-
-def calculate_rmse(y_test, y_pred):
-    rmse = sqrt(mean_squared_error(y_test, y_pred))
-    return rmse
 
 
 def predict_and_save_submission(clf, preprocessor, data, filename):
     data_preprocessed = preprocessor.transform(data)
-    data['predicted_selling_amount'] = clf.predict(data_preprocessed)
-    submission = data[['h_booking_id', 'predicted_selling_amount']]
+    predictions = clf.predict(data_preprocessed)
+
+    # Create a dataframe for submission
+    submission = pd.DataFrame({'h_booking_id': data['h_booking_id'],
+                               'predicted_selling_amount': predictions})
+
     submission.to_csv(filename, index=False)
 
 if __name__ == '__main__':
 
-    # Load data
-    data = load_data('agoda_cancellation_train.csv')
-
-    # Separate features and target variable
-    features = data.drop(['h_booking_id', 'cancellation_datetime', 'original_selling_amount'], axis=1)
-    y = data['original_selling_amount']
-
-    # Preprocess the features
+    # Load and preprocess the training data
+    print("Loading and preprocessing training data...")
+    train_data = load_data('agoda_cancellation_train.csv')
+    features = train_data.drop(['h_booking_id', 'cancellation_datetime', 'original_selling_amount'], axis=1)
+    y = train_data['original_selling_amount']
     preprocessed_features, preprocessor = preprocess_data(features)
 
-    # Train/Test split
-    X_train, X_test, y_train, y_test = train_test_split(preprocessed_features, y, test_size=0.2, random_state=0)
-
     # Train the model
-    clf = train_model(X_train, y_train)
+    print("Training model...")
+    clf = train_model(preprocessed_features, y)
 
-    # Predict on test data
-    y_pred = clf.predict(X_test)
+    # Load and preprocess the test data
+    print("Loading and preprocessing test data...")
+    test_data = load_data('Agoda_Test_2.csv')
 
-    # Calculate RMSE
-    rmse = calculate_rmse(y_test, y_pred)
-    print(f'RMSE: {rmse}')
-
-    # Predict on whole dataset for submission
-    predict_and_save_submission(clf, preprocessor, features, 'agoda_cost_of_cancellation.csv')
+    # Predict and save submission
+    print("Predicting and saving submission...")
+    predict_and_save_submission(clf, preprocessor, test_data, 'agoda_cost_of_cancellation.csv')
+    print("Done!")
