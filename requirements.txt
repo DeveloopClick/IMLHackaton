@@ -3,3 +3,5 @@ pandas~=1.4.1
 scikit-learn~=1.2.2
 xgboost~=1.7.5
 forex_python~=1.8
+lightgbm~=3.3.5
+imblearn~=0.0

@@ -10,17 +10,20 @@ from sklearn.compose import ColumnTransformer
 from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline as imbPipeline
 
-def preprocess_data(df_train, df_test, date_cols, cat_cols, num_cols,relevant_cols):
 
+def preprocess_data_train(df_train, date_cols, cat_cols, num_cols,relevant_cols):
     df_train = df_train[relevant_cols + ['cancellation_datetime']]
-    df_test = df_test[relevant_cols]
     # Prepare the training data
     X_train, y_train = prepare_data(df_train, date_cols, cat_cols, num_cols)
+    return X_train, y_train
 
+
+def preprocess_data_test(df_test, date_cols, cat_cols, num_cols,relevant_cols):
+    df_test = df_test[relevant_cols]
     # Prepare the test data
     X_test, _ = prepare_data(df_test, date_cols, cat_cols, num_cols, is_train=False)
+    return X_test
 
-    return X_train, y_train, X_test
 
 def predict_test_data(model, X_test, output_filename):
     # Make predictions on the test data using the trained model
@@ -32,6 +35,9 @@ def predict_test_data(model, X_test, output_filename):
         'cancellation': y_test_pred
     })
     output_df.to_csv(output_filename, index=False)
+
+    return output_df
+
 
 def prepare_data(df, date_cols, cat_cols, num_cols,is_train=True):
     df['booking_datetime'] = pd.to_datetime(df['booking_datetime'])
@@ -62,15 +68,13 @@ def prepare_data(df, date_cols, cat_cols, num_cols,is_train=True):
 
 
 def prepare_pipeline(cat_cols, num_cols):
-
-
-
     preprocessor = ColumnTransformer(
         transformers=[
             ('num', StandardScaler(), num_cols),
             ('cat', OneHotEncoder(handle_unknown='ignore'), cat_cols)])
 
     return preprocessor
+
 
 def evaluate_model(model, X_val, y_val):
     y_val_pred = model.predict(X_val)
@@ -83,11 +87,10 @@ def evaluate_model(model, X_val, y_val):
     print("Validation Recall:", recall)
     print("Validation F1 Score:", f1)
 
-def main():
-    df_train = pd.read_csv('agoda_cancellation_train.csv')
-    # df_train = df_train.sample(n=10000, random_state=42)
 
-    df_test = pd.read_csv('Agoda_Test_1.csv') # change to your test dataset
+def train_model_1(path_to_train_file: str):
+    df_train = pd.read_csv(path_to_train_file)
+
     # df_test = df_test.sample(n=2000, random_state=42)
     relevant_cols = ['booking_datetime', 'checkin_date', 'checkout_date', 'hotel_country_code',
                      'hotel_star_rating', 'charge_option', 'accommadation_type_name',
@@ -104,12 +107,7 @@ def main():
     num_cols = ['h_booking_id', 'hotel_star_rating', 'guest_is_not_the_customer', 'no_of_room', 'no_of_adults', 'no_of_children',
                 'is_user_logged_in',  'days_before', 'num_of_days', 'hotel_live_date_year']
 
-
-    X_train, y_train, X_test = preprocess_data(df_train, df_test, date_cols, cat_cols, num_cols,relevant_cols)
-
-    # X_test = df_test.drop('cancellation', axis=1)
-    # y_test = df_test['cancellation']
-
+    X_train, y_train = preprocess_data_train(df_train, date_cols, cat_cols, num_cols, relevant_cols)
     X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=42)
 
     preprocessor = prepare_pipeline(cat_cols, num_cols)
@@ -131,11 +129,29 @@ def main():
 
     evaluate_model(grid_search, X_val, y_val)
 
-    # # Evaluate the model
-    # evaluate_model(grid_search, X_val, y_val)
+    return grid_search
+
+
+def test_model_1(model, path_to_test_file):
+    df_test = pd.read_csv(path_to_test_file)  # change to your test dataset
+    relevant_cols = ['booking_datetime', 'checkin_date', 'checkout_date', 'hotel_country_code',
+                     'hotel_star_rating', 'charge_option', 'accommadation_type_name',
+                     'customer_nationality', 'guest_is_not_the_customer',
+                     'no_of_room',
+                     'original_payment_currency', 'is_first_booking', 'request_airport',
+                     'hotel_brand_code', 'hotel_live_date', 'no_of_adults',
+                     'no_of_children', 'is_user_logged_in', 'h_booking_id']
+
+    date_cols = ['hotel_live_date']
+    cat_cols = ['hotel_country_code', 'charge_option', 'accommadation_type_name', 'customer_nationality',
+                'original_payment_currency',
+                'hotel_brand_code']
+    num_cols = ['h_booking_id', 'hotel_star_rating', 'guest_is_not_the_customer', 'no_of_room', 'no_of_adults',
+                'no_of_children',
+                'is_user_logged_in', 'days_before', 'num_of_days', 'hotel_live_date_year']
+
+    X_test = preprocess_data_test(df_test, date_cols, cat_cols, num_cols, relevant_cols)
 
     # Predict on the test data and save the output
-    predict_test_data(grid_search, X_test, 'agoda_cancellation_prediction.csv')
-
-if __name__ == '__main__':
-    main()
+    prediction = predict_test_data(model, X_test, 'agoda_cancellation_prediction.csv')
+    return prediction

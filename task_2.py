@@ -116,6 +116,7 @@ def load_and_preprocess_test_data(filename: str):
     relevant_data = relevant_data.dropna(axis=0)
     return relevant_data
 
+
 def predict_and_save(model, filename):
     # Load and preprocess the test data similar to how we preprocessed the training data
     data_test = load_and_preprocess_test_data(filename)
@@ -145,10 +146,10 @@ def predict_and_save(model, filename):
     return output
 
 
-def run_task_2():
+def train_model_2(path_to_train_file: str):
     # Load and preprocess the training data
     print("Loading and preprocessing training data...")
-    data, y = load_and_preprocess_data('agoda_cancellation_train.csv')
+    data, y = load_and_preprocess_data(path_to_train_file)
 
     # Split the training data
     print("Splitting training data into train and test sets...")
@@ -165,6 +166,11 @@ def run_task_2():
     rmse_test = calculate_rmse(y_test, y_test_pred)
     print(f'Test RMSE: {rmse_test}')
 
+    return model
+
+
+def test_model_2(model, path_to_test_file):
     # Predict and save the predicted selling amounts for the test data
     print("Predicting and saving the selling amounts for the test data...")
-    predict_and_save(model, 'Agoda_Test_2.csv')
+    prediction = predict_and_save(model, path_to_test_file)
+    return prediction
