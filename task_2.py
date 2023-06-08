@@ -17,12 +17,12 @@ def load_and_preprocess_data(filename: str):
     # change currency and price to match the usd price
     convert_price_to_usd(data)
     relevant_data = data[[
-                          'booking_datetime', 'checkin_date', 'checkout_date', 'hotel_star_rating', 'charge_option', 'accommadation_type_name',
+                          'booking_datetime', 'checkin_date', 'checkout_date', 'hotel_star_rating',
                           'no_of_room'
                           ]]
-    # one hot encode for country_code, acoommadation_type_name, charge_option
-    relevant_data = pd.get_dummies(relevant_data, columns=['charge_option'])
-    relevant_data = pd.get_dummies(relevant_data, columns=['accommadation_type_name'])
+    # # one hot encode for country_code, acoommadation_type_name, charge_option
+    # relevant_data = pd.get_dummies(relevant_data, columns=['charge_option'])
+    # relevant_data = pd.get_dummies(relevant_data, columns=['accommadation_type_name'])
 
     # convert date/time features to numerical
     for feature in ['checkin_date', 'checkout_date']:
@@ -45,7 +45,7 @@ def load_and_preprocess_data(filename: str):
 
 def train_model(X, y):
     xgb_reg = xgb.XGBRegressor()
-    parameters = {'n_estimators': [50, 100],
+    parameters = {'n_estimators': [50],
                   'learning_rate': [0.05, 0.1],
                   'max_depth': [5, 7],
                   'gamma': [0, 0.1],
@@ -90,21 +90,28 @@ def convert_price_to_usd(data_in_all_currencys):
 
 def load_and_preprocess_test_data(filename: str):
     data = pd.read_csv(filename)
+    # change currency and price to match the usd price
     relevant_data = data[[
-                          'booking_datetime', 'checkin_date', 'checkout_date', 'hotel_star_rating', 'charge_option', 'accommadation_type_name',
-                          'no_of_room'
-                          ]]
-    # one hot encode for country_code, acoommadation_type_name, charge_option
-    relevant_data = pd.get_dummies(relevant_data, columns=['charge_option'])
-    relevant_data = pd.get_dummies(relevant_data, columns=['accommadation_type_name'])
+        'booking_datetime', 'checkin_date', 'checkout_date', 'hotel_star_rating',
+        'no_of_room'
+    ]]
+    # # one hot encode for country_code, acoommadation_type_name, charge_option
+    # relevant_data = pd.get_dummies(relevant_data, columns=['charge_option'])
+    # relevant_data = pd.get_dummies(relevant_data, columns=['accommadation_type_name'])
 
-    # convert date/time features to datetime
-    relevant_data['checkin_date'] = pd.to_datetime(relevant_data['checkin_date'])
-    relevant_data['checkout_date'] = pd.to_datetime(relevant_data['checkout_date'])
+    # convert date/time features to numerical
+    for feature in ['checkin_date', 'checkout_date']:
+        relevant_data[feature] = pd.to_datetime(relevant_data[feature])
+        relevant_data[feature + '_month'] = relevant_data[feature].dt.month
+        relevant_data[feature + '_day'] = relevant_data[feature].dt.day
+        relevant_data[feature + '_weekday'] = relevant_data[feature].dt.weekday
 
     # calculate number of nights
     relevant_data['num_nights'] = (relevant_data['checkout_date'] - relevant_data['checkin_date']).dt.days
-    relevant_data.drop(['checkin_date', 'checkout_date', 'booking_datetime'], axis=1, inplace=True)
+    relevant_data.drop(['checkin_date', 'checkout_date'], axis=1, inplace=True)
+
+    if 'booking_datetime' in relevant_data.columns:
+        relevant_data.drop('booking_datetime', axis=1, inplace=True)
 
     relevant_data = relevant_data.dropna(axis=0)
     return relevant_data
